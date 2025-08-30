@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>LeBron Clicker Ultimate</title>
+<style>
+  body { margin:0; font-family:Arial,sans-serif; background:#1e1e1e; color:white; }
+  #container { display:grid; grid-template-columns: 1fr 2fr 1fr; height:100vh; }
+  h2 { margin:10px 0; border-bottom:1px solid #444; }
+  #left, #right { padding:10px; overflow-y:auto; background:#2a2a2a; }
+  #center { display:flex; flex-direction:column; align-items:center; justify-content:center; }
+  #clicker { font-size:28px; padding:40px; background:orange; color:black; border:none; border-radius:50%; cursor:pointer; width:200px; height:200px; box-shadow:0 0 15px rgba(0,0,0,0.6); }
+  .upgrade { display:block; margin:5px 0; padding:10px; background:#444; border:none; color:white; cursor:pointer; border-radius:8px; text-align:left; }
+  .upgrade:hover { background:#666; }
+  .achievement { background:#333; padding:5px; margin:3px 0; border-radius:6px; }
+  .quest { background:#555; padding:5px; margin:3px 0; border-radius:6px; }
+  #events { background:#333; padding:5px; margin:5px 0; min-height:40px; border-radius:6px; text-align:center; }
+  #leaderboard { background:#333; padding:5px; margin:5px 0; border-radius:6px; }
+  #particles { position: fixed; top:0; left:0; pointer-events:none; width:100%; height:100%; z-index:5; }
+  #miniGame { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:2000; text-align:center; padding-top:100px; }
+  #miniGame button { background:gold; color:black; font-size:18px; padding:10px 20px; margin-top:20px; border:none; border-radius:8px; cursor:pointer; }
+  #devMenu { display:none; position:fixed; top:10px; right:10px; background:#333; padding:10px; border:2px solid white; border-radius:8px; z-index:3000; }
+  #devControls input { width:100px; margin:3px; }
+  #devControls button { margin:3px; }
+</style>
+</head>
+<body>
+<div id="container">
+  <div id="left">
+    <h2>Upgrades</h2><div id="upgrades"></div>
+    <h2>Quests</h2><div id="quests"></div>
+  </div>
+  <div id="center">
+    <h1>🏀 LeBron Clicker Ultimate 🏀</h1>
+    <p id="score">Points: 0</p>
+    <p id="fans">Fans: 0</p>
+    <button id="clicker">CLICK</button>
+  </div>
+  <div id="right">
+    <h2>Achievements</h2><div id="achievements"></div>
+    <h2>Events</h2><div id="events"></div>
+    <h2>Leaderboard</h2><div id="leaderboard"></div>
+  </div>
+</div>
+
+<div id="devMenu">
+  <input type="text" id="devCodeInput" placeholder="Enter Code">
+  <button id="unlockDevBtn">Unlock</button>
+  <div id="devControls" style="display:none;">
+    <input type="number" id="devPoints" placeholder="Set Points">
+    <input type="number" id="devFans" placeholder="Set Fans">
+    <input type="number" id="devMultiplier" placeholder="Set Multiplier">
+    <input type="number" id="devAuto" placeholder="Set AutoClickers">
+    <br><button id="godModeBtn">Toggle God Mode</button>
+    <button id="applyDevBtn">Apply</button>
+    <button id="resetSaveBtn" style="background:red;color:white;">Reset Save</button>
+    <hr>
+    <p style="color:gold;">Mini-Game Triggers:</p>
+    <button id="startFreeThrowBtn">Start Free Throw</button>
+    <button id="startThreePointBtn">Start 3-Point Contest</button>
+  </div>
+</div>
+
+<canvas id="particles"></canvas>
+<div id="miniGame"><div id="miniGameContent" style="color:white; font-size:20px;"></div><button id="miniGameClose">Close</button></div>
+
+<script>
+let score=0,fans=0,pointsPerClick=1,autoClickers=0,multiplier=1,prestigeBonus=1,sponsorRate=0,godMode=false;
+
+const upgrades=[ 
+  {name:"Basketball Court",cost:10,apply:()=>pointsPerClick+=1},
+  {name:"Slam Dunk Arena",cost:50,apply:()=>autoClickers+=1},
+  {name:"Fan Club",cost:100,apply:()=>fans+=10},
+  {name:"Trophy Room",cost:200,apply:()=>multiplier*=2},
+  {name:"Legendary Arena",cost:500,apply:()=>autoClickers+=10},
+  {name:"Merch Store",cost:1000,apply:()=>fans*=2},
+  {name:"Sponsorships",cost:2000,apply:()=>sponsorRate+=0.01}
+];
+const achievements=[ 
+  {name:"First Point!",cond:()=>score>=1,unlocked:false},
+  {name:"100 Points!",cond:()=>score>=100,unlocked:false},
+  {name:"1000 Points!",cond:()=>score>=1000,unlocked:false},
+  {name:"Fan Favorite",cond:()=>fans>=100,unlocked:false}
+];
+const quests=[ 
+  {name:"Score 500 Points",cond:()=>score>=500,unlocked:false,reward:50},
+  {name:"Get 100 Fans",cond:()=>fans>=100,unlocked:false,multiplierBonus:2}
+];
+
+const upgradesDiv=document.getElementById('upgrades');
+const achievementList=document.getElementById('achievements');
+const questList=document.getElementById('quests');
+const eventsDisplay=document.getElementById('events');
+const leaderList=document.getElementById('leaderboard');
+const particles=document.getElementById('particles');
+const ctx=particles.getContext('2d');
+particles.width=window.innerWidth;particles.height=window.innerHeight;
+
+// Particles
+let particleArray=[];
+function createParticle(color){particleArray.push({x:Math.random()*window.innerWidth,y:window.innerHeight,vx:(Math.random()-0.5)*2,vy:-Math.random()*3-1,life:100,color});}
+function createFloatingPoints(amount){const span=document.createElement('span');span.textContent="+"+amount;span.style.position="absolute";span.style.left="50%";span.style.top="50%";span.style.color="gold";span.style.fontWeight="bold";document.body.appendChild(span);let top=50;const interval=setInterval(()=>{top-=1;span.style.top=top+"%";if(top<30){clearInterval(interval);span.remove();}},50);}
+function animateParticles(){ctx.clearRect(0,0,particles.width,particles.height);particleArray.forEach((p,i)=>{ctx.fillStyle=p.color;ctx.fillRect(p.x,p.y,4,4);p.x+=p.vx;p.y+=p.vy;p.life--;if(p.life<=0)particleArray.splice(i,1);});requestAnimationFrame(animateParticles);}animateParticles();
+
+// Clicker
+document.getElementById('clicker').addEventListener('click',()=>{let gain=godMode?1000:pointsPerClick*multiplier*prestigeBonus;score+=gain;createParticle('orange');createFloatingPoints(gain);updateDisplay();});
+
+// Render Upgrades
+function renderUpgrades(){upgradesDiv.innerHTML='';upgrades.forEach(u=>{const btn=document.createElement('button');btn.textContent=`${u.name} (${u.cost})`;btn.className="upgrade";btn.onclick=()=>{if(score>=u.cost){score-=u.cost;u.apply();u.cost=Math.floor(u.cost*1.5);updateDisplay();renderUpgrades();}};upgradesDiv.appendChild(btn);});}
+
+// Achievements
+function checkAchievements(){achievements.forEach(a=>{if(a.cond()&&!a.unlocked){a.unlocked=true;eventsDisplay.textContent=`Achievement: ${a.name}`;setTimeout(()=>{eventsDisplay.textContent='';},3000);}});achievementList.innerHTML='';achievements.forEach(a=>{const div=document.createElement('div');div.className='achievement';div.textContent=(a.unlocked?"✅ ":"❌ ")+a.name;achievementList.appendChild(div);});}
+
+// Quests
+function checkQuests(){questList.innerHTML='';quests.forEach(q=>{if(q.cond()&&!q.unlocked){q.unlocked=true;score+=q.reward||0;if(q.multiplierBonus)multiplier*=q.multiplierBonus;eventsDisplay.textContent=`Quest complete: ${q.name}`;setTimeout(()=>{eventsDisplay.textContent='';},3000);}const div=document.createElement('div');div.className='quest';div.textContent=(q.unlocked?"✅ ":"❌ ")+q.name;questList.appendChild(div);});}
+
+// Leaderboard
+function updateLeaderboard(){leaderList.textContent=`Points: ${score} | Fans: ${fans} | Prestige Bonus: ${Math.floor(prestigeBonus*100)}%`;}
+
+// Update Display
+function updateDisplay(){document.getElementById('score').textContent="Points: "+score;document.getElementById('fans').textContent="Fans: "+fans;checkAchievements();checkQuests();updateLeaderboard();saveGame();}
+
+// Auto income
+setInterval(()=>{score+=autoClickers;score+=Math.floor(score*sponsorRate);updateDisplay();},1000);
+
+// Dev Menu
+document.body.addEventListener('click',(e)=>{if(e.clientX<50&&e.clientY<50){document.getElementById('devMenu').style.display='block';}});
+document.getElementById('unlockDevBtn').onclick=()=>{if(document.getElementById('devCodeInput').value==='LEBRONDEV'){document.getElementById('devControls').style.display='block';}};
+document.getElementById('applyDevBtn').onclick=()=>{if(document.getElementById('devPoints').value)score=parseInt(document.getElementById('devPoints').value);if(document.getElementById('devFans').value)fans=parseInt(document.getElementById('devFans').value);if(document.getElementById('devMultiplier').value)multiplier=parseFloat(document.getElementById('devMultiplier').value);if(document.getElementById('devAuto').value)autoClickers=parseInt(document.getElementById('devAuto').value);updateDisplay();};
+document.getElementById('godModeBtn').onclick=()=>{godMode=!godMode;alert("God Mode "+(godMode?"ON":"OFF"));};
+document.getElementById('resetSaveBtn').onclick=()=>{localStorage.removeItem('lebronSave');location.reload();};
+
+// Mini-games
+const miniGame=document.getElementById('miniGame');const miniGameContent=document.getElementById('miniGameContent');document.getElementById('miniGameClose').onclick=()=>miniGame.style.display='none';
+function startFreeThrow(){miniGame.style.display='block';miniGameContent.innerHTML=`🏀 Free Throw!<br><div id="bar" style="width:300px;height:20px;background:white;margin:20px auto;position:relative;"><div id="marker" style="width:30px;height:20px;background:red;position:absolute;left:0;"></div><div style="position:absolute;left:120px;width:60px;height:20px;border:2px solid lime;"></div></div><button id="shootBtn">Shoot!</button>`;const marker=document.getElementById('marker');let pos=0,dir=1;const interval=setInterval(()=>{pos+=dir*5;if(pos<=0||pos>=270)dir*=-1;marker.style.left=pos+'px';},20);document.getElementById('shootBtn').onclick=()=>{clearInterval(interval);if(pos>=120&&pos<=180){score+=50;fans+=20;alert('Nice shot! +50 points +20 fans');}else alert('Missed!');miniGame.style.display='none';updateDisplay();};}
+function startThreePoint(){miniGame.style.display='block';miniGameContent.innerHTML=`🏀 3-Point Contest! Click fast for 10s.<br><span id="clickCount">0</span> clicks<br>`;const btn=document.createElement('button');btn.textContent='Shoot!';miniGameContent.appendChild(btn);let clicks=0;btn.onclick=()=>{clicks++;document.getElementById('clickCount').textContent=clicks;};let timeLeft=10;const timer=setInterval(()=>{timeLeft--;if(timeLeft<=0){clearInterval(timer);score+=clicks*10;fans+=clicks*2;alert(`You scored ${clicks*10} points and ${clicks*2} fans`);miniGame.style.display='none';updateDisplay();}},1000);}
+document.getElementById('startFreeThrowBtn').onclick=()=>startFreeThrow();
+document.getElementById('startThreePointBtn').onclick=()=>startThreePoint();
+
+// ----- SAVE/LOAD -----
+function saveGame(){const save={score,fans,pointsPerClick,autoClickers,multiplier,prestigeBonus,sponsorRate,upgrades:upgrades.map(u=>u.cost),achievements:achievements.map(a=>a.unlocked),quests:quests.map(q=>q.unlocked)};localStorage.setItem('lebronSave',JSON.stringify(save));}
+function loadGame(){const data=localStorage.getItem('lebronSave');if(data){const save=JSON.parse(data);score=save.score||0;fans=save.fans||0;pointsPerClick=save.pointsPerClick||1;autoClickers=save.autoClickers||0;multiplier=save.multiplier||1;prestigeBonus=save.prestigeBonus||1;sponsorRate=save.sponsorRate||0;if(save.upgrades)save.upgrades.forEach((c,i)=>upgrades[i].cost=c);if(save.achievements)save.achievements.forEach((v,i)=>achievements[i].unlocked=v);if(save.quests)save.quests.forEach((v,i)=>quests[i].unlocked=v);}}
+loadGame();
+renderUpgrades();updateDisplay();
+</script>
+</body>
+</html>
